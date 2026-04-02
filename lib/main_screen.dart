@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter_sudoku_apps/pickDialog.dart';
 import 'package:flutter_sudoku_apps/sudoku.dart';
 
 class SudokuGame extends StatefulWidget {
@@ -10,10 +10,6 @@ class SudokuGame extends StatefulWidget {
 
 class _SudokuGameState extends State<SudokuGame> {
   late final SudokuBoard board = SudokuBoard();
-  final List<List<TextEditingController>> controllers = List.generate(
-    9,
-    (_) => List.generate(9, (_) => TextEditingController()),
-  );
 
   @override
   void initState() {
@@ -24,34 +20,78 @@ class _SudokuGameState extends State<SudokuGame> {
   void _newGame() {
     board.generateFullSolution();
     board.createPuzzle(cellsToRemove: 45);
-
-    for (int r = 0; r < 9; r++) {
-      for (int c = 0; c < 9; c++) {
-        controllers[r][c].text = board.puzzle[r][c] == 0
-            ? ''
-            : '${board.puzzle[r][c]}';
-      }
-    }
     setState(() {});
   }
 
-  void _onCellChanged(int r, int c, String value) {
-    if (value.isEmpty) {
+  /// Обработчик тапа по ячейке — открывает диалог выбора числа
+  Future<void> _onCellTapped(int r, int c) async {
+    // Блокируем редактирование исходных ячеек
+    if (board.puzzle[r][c] != 0 && _isOriginalCell(r, c)) return;
+
+    final current = board.puzzle[r][c] == 0 ? null : board.puzzle[r][c];
+
+    final result = await showDialog<int>(
+      context: context,
+      builder: (_) => NumberPickerDialog(
+        currentValue: current,
+        isOriginal: _isOriginalCell(r, c),
+      ),
+    );
+
+    // Если пользователь нажал "Отмена" или закрыл диалог
+    if (result == null) return;
+
+    // 0 означает удаление значения
+    if (result == 0) {
       board.puzzle[r][c] = 0;
+      setState(() {});
       return;
     }
 
-    int num = int.tryParse(value) ?? 0;
-    if (num < 1 || num > 9) return;
+    // Валидация хода по правилам судоку
+    final isValid = board.isValidMove(r, c, result);
 
-    // Блокируем редактирование исходных ячеек
-    // (в реальном приложении храните Set<Offset> initialCells)
+    // Опционально: проверка на совпадение с решением (для режима "проверки")
+    // final isCorrect = board.matchesSolution(r, c, result);
 
-    bool valid = board.isValidMove(r, c, num);
-    board.puzzle[r][c] = num;
+    board.puzzle[r][c] = result;
 
     // Визуальная обратная связь
-    _showValidationFeedback(r, c, valid, num);
+    _showValidationFeedback(r, c, isValid, result);
+
+    // Проверка на завершение игры
+    if (board.isPuzzleComplete() && mounted) {
+      _showWinDialog();
+    }
+
+    setState(() {});
+  }
+
+  /// Проверка: является ли ячейка исходной (не редактируемой)
+  bool _isOriginalCell(int r, int c) {
+    return board.puzzle[r][c] != 0 &&
+        board.solution[r][c] == board.puzzle[r][c];
+  }
+
+  /// Показ диалога победы
+  void _showWinDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: const Text('🎉 Поздравляем!'),
+        content: const Text('Вы успешно решили судоку!'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context); // закрыть диалог
+              Navigator.pop(context); // закрыть игру или вернуться
+            },
+            child: const Text('Новая игра'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showValidationFeedback(int r, int c, bool valid, int value) {
@@ -70,60 +110,65 @@ class _SudokuGameState extends State<SudokuGame> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Судоку')),
-      body: Column(
-        children: [
-          Expanded(
-            child: GridView.builder(
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 9,
-              ),
-              itemCount: 81,
-              itemBuilder: (context, index) {
-                int r = index ~/ 9, c = index % 9;
-                return _buildCell(r, c);
-              },
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: ElevatedButton(
-              onPressed: _newGame,
-              child: const Text('Новая игра'),
-            ),
+      appBar: AppBar(
+        title: const Text('Судоку'),
+        shadowColor: Colors.black,
+        elevation: 11,
+        actions: [
+          TextButton.icon(
+            onPressed: _newGame,
+            icon: const Icon(Icons.check),
+            label: const Text('Начать новую игру'),
           ),
         ],
+      ),
+      body: Center(
+        child: GridView.builder(
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 9,
+          ),
+          itemCount: 81,
+          itemBuilder: (context, index) {
+            int r = index ~/ 9, c = index % 9;
+            return _buildCell(r, c);
+          },
+        ),
       ),
     );
   }
 
   Widget _buildCell(int r, int c) {
-    final isOriginal =
-        board.puzzle[r][c] != 0 && controllers[r][c].text.isNotEmpty;
-    return Container(
-      margin: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade300, width: 1),
-        color: isOriginal ? Colors.grey.shade100 : Colors.white,
-      ),
-      child: TextField(
-        controller: controllers[r][c],
-        textAlign: TextAlign.center,
-        keyboardType: TextInputType.number,
-        inputFormatters: [
-          FilteringTextInputFormatter.digitsOnly,
-          LengthLimitingTextInputFormatter(1),
-        ],
-        enabled: !isOriginal, // Исходные ячейки не редактируются
-        style: TextStyle(
-          fontWeight: isOriginal ? FontWeight.bold : FontWeight.normal,
-          color: isOriginal ? Colors.black87 : Colors.blue,
+    final value = board.puzzle[r][c];
+    final isOriginal = _isOriginalCell(r, c);
+    final isEmpty = value == 0;
+
+    return GestureDetector(
+      onTap: () => _onCellTapped(r, c),
+      child: Container(
+        margin: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          // border: Border.all(
+          //   color: (r % 3 == 0 && r != 0) || (c % 3 == 0 && c != 0)
+          //       ? Colors.black
+          //       : Colors.grey.shade300,
+          //   width: (r % 3 == 0 && r != 0) || (c % 3 == 0 && c != 0) ? 2.5 : 1,
+          // ),
+          color: isOriginal
+              ? Colors.grey.shade200
+              : (isEmpty ? Colors.white : Colors.blue.shade50),
         ),
-        onChanged: (val) => _onCellChanged(r, c, val),
-        decoration: const InputDecoration(
-          border: InputBorder.none,
-          contentPadding: EdgeInsets.zero,
+        child: Center(
+          child: Text(
+            isEmpty ? '' : '$value',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: isOriginal ? FontWeight.bold : FontWeight.w500,
+              color: isOriginal
+                  ? Colors.black87
+                  : (isEmpty ? null : Colors.blue.shade900),
+            ),
+          ),
         ),
       ),
     );
