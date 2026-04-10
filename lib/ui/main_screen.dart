@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_sudoku_apps/pickDialog.dart';
-import 'package:flutter_sudoku_apps/sudoku.dart';
+import 'package:flutter_sudoku_apps/ui/pick_dialog.dart';
+import 'package:flutter_sudoku_apps/data/sudoku.dart';
 
-class SudokuGame extends StatefulWidget {
-  const SudokuGame({super.key});
+class MainScreen extends StatefulWidget {
+  const MainScreen({super.key});
   @override
-  State<SudokuGame> createState() => _SudokuGameState();
+  State<MainScreen> createState() => _MainScreenState();
 }
 
-class _SudokuGameState extends State<SudokuGame> {
+class _MainScreenState extends State<MainScreen> {
   late final SudokuBoard board = SudokuBoard();
 
   @override
